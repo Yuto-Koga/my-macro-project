@@ -6,20 +6,14 @@ from pandas_datareader import data as pdr
 import datetime
 
 # === 設定 ===
-FRED_SERIES_ID = 'ARGRGDPMQDSMEI'  # アルゼンチン実質GDP（四半期）
-START_DATE = '2000-01-01'
-END_DATE = '2024-12-31'
 LAMBDAS = [10, 100, 1600, 3000]
+start_date = '1962-01-01'
+end_date = '2022-01-01'
 
-# === データ取得 ===
-print("FREDからデータを取得中...")
-gdp_data = pdr.DataReader(FRED_SERIES_ID, 'fred', START_DATE, END_DATE)
-gdp_data.dropna(inplace=True)
+# download the data from FRED using pandas_datareader
+gdp = pdr.DataReader('MKTGDPARA646NWDB', 'fred', start_date, end_date)
+log_gdp = np.log(gdp)
 
-# === 対数変換 ===
-log_gdp = np.log(gdp_data[FRED_SERIES_ID])
-
-# === HPフィルターの適用 ===
 trend_components = {}
 cycle_components = {}
 for lam in LAMBDAS:

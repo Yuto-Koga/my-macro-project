@@ -1,0 +1,98 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from statsmodels.tsa.filters.hp_filter import hpfilter
+from pandas_datareader import data as pdr
+import datetime
+
+# === 設定 ===
+LAMBDAS = [10, 100, 1600, 3000]
+start_date = '1962-01-01'
+end_date = '2022-01-01'
+
+# download the data from FRED using pandas_datareader
+gdp = pdr.DataReader('MKTGDPARA646NWDB', 'fred', start_date, end_date)
+log_gdp = np.log(gdp)
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from statsmodels.tsa.filters.hp_filter import hpfilter
+from pandas_datareader import data as pdr
+import datetime
+
+# === 設定 ===
+LAMBDAS = [10, 100, 1600, 3000]
+start_date = '1962-01-01'
+end_date = '2022-01-01'
+
+# download the data from FRED using pandas_datareader
+gdp = pdr.DataReader('MKTGDPARA646NWDB', 'fred', start_date, end_date)
+log_gdp = np.log(gdp)
+
+# === 対数変換 ===
+# log_gdp = np.log(gdp_data[1962-01-01]) #This line is incorrect.  gdp_data is not defined and 1962-01-01 is not a valid index.
+#Assuming you want to take the log of the entire GDP series, the original line was already correct
+
+# === HPフィルターの適用 ===
+trend_components = {}
+cycle_components = {}
+for lam in LAMBDAS:
+    cycle, trend = hpfilter(log_gdp['MKTGDPARA646NWDB'], lamb=lam) #Fixed: Accessing the GDP values within the DataFrame
+    trend_components[lam] = trend
+    cycle_components[lam] = cycle
+
+# === トレンドの可視化 ===
+plt.figure(figsize=(14, 6))
+plt.plot(log_gdp, label='Log(Real GDP)', linewidth=2)
+for lam in LAMBDAS:
+    plt.plot(trend_components[lam], label=f'Trend (lambda={lam})')
+plt.title('Log(Real GDP) and HP Filter Trend Components')
+plt.xlabel('Date')
+plt.ylabel('Log Scale')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# === 循環成分の可視化 ===
+plt.figure(figsize=(14, 6))
+for lam in LAMBDAS:
+    plt.plot(cycle_components[lam], label=f'Cycle (lambda={lam})')
+plt.title('HP Filter Cycle Components')
+plt.xlabel('Date')
+plt.ylabel('Deviation from Trend')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+trend_components = {}
+cycle_components = {}
+for lam in LAMBDAS:
+    cycle, trend = hpfilter(log_gdp, lamb=lam)
+    trend_components[lam] = trend
+    cycle_components[lam] = cycle
+
+# === トレンドの可視化 ===
+plt.figure(figsize=(14, 6))
+plt.plot(log_gdp, label='Log(Real GDP)', linewidth=2)
+for lam in LAMBDAS:
+    plt.plot(trend_components[lam], label=f'Trend (lambda={lam})')
+plt.title('Log(Real GDP) and HP Filter Trend Components')
+plt.xlabel('Date')
+plt.ylabel('Log Scale')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# === 循環成分の可視化 ===
+plt.figure(figsize=(14, 6))
+for lam in LAMBDAS:
+    plt.plot(cycle_components[lam], label=f'Cycle (lambda={lam})')
+plt.title('HP Filter Cycle Components')
+plt.xlabel('Date')
+plt.ylabel('Deviation from Trend')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
