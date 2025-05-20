@@ -8,10 +8,10 @@ fred = Fred(api_key='46b4fbabbfe7ae0e8ca50e2ab83e48e2')
 
 # 使用するFREDシリーズID
 series_codes = {
-    'Y': 'JPNNGDP',          # Real GDP (UK)
-    'K': 'RKNANPJPA666NRUG',          # Capital Stock (constant national prices)
-    'working_age_pop': 'LFWA64TTJPA647S',  # Working-age population (15–64)
-    'employment_rate': 'LREM64TTJPA156S'   # Employment rate (OECD, percent)
+    'Y': 'GDP',          # Real GDP (UK)
+    'K': 'RKNANPUSA666NRUG',          # Capital Stock (constant national prices)
+    'working_age_pop': 'LFWA64TTUSQ647N',  # Working-age population (15–64)
+    'employment_rate': 'LREM64TTUSQ156N'   # Employment rate (OECD, percent)
 }
 
 # データ取得と整形
@@ -40,7 +40,7 @@ df['log_y'] = np.log(df['y'])
 df['log_k'] = np.log(df['k'])
 
 # ソロー残差（TFP）
-alpha = 0.17
+alpha = 0.42
 df['log_A'] = df['log_y'] - alpha * df['log_k']
 
 # 成長率（対数差分）
@@ -60,7 +60,7 @@ plt.figure(figsize=(12, 6))
 plt.plot(result.index, result['GDP per worker Growth'], label='GDP per worker Growth')
 plt.plot(result.index, result['TFP Growth'], label='TFP Growth')
 plt.plot(result.index, result['Capital Growth per worker'], label='Capital Deepening')
-plt.title('JP Growth Accounting (per worker GDP and capital)')
+plt.title('UK Growth Accounting (per worker GDP and capital)')
 plt.xlabel('Year')
 plt.ylabel('Growth Rate (log difference)')
 plt.legend()
