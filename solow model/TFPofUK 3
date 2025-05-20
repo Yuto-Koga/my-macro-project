@@ -3,18 +3,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 from fredapi import Fred
 
-# --- STEP 1: FRED APIキー設定（あなたのキーに置き換えてください） ---
+# FRED APIキー（適宜差し替えてください）
 fred = Fred(api_key='46b4fbabbfe7ae0e8ca50e2ab83e48e2')
 
-# --- STEP 2: 使用するFREDシリーズID ---
+# 使用するFREDシリーズID
 series_codes = {
-    'y_pc': 'PCAGDPGBA646NWDB',        # Real GDP per capita (constant USD, UK)
-    'K': 'RKNANPGBA666NRUG',         # Capital Stock at Constant National Prices for UK
-    'working_age_pop': 'LFWA64TTGBQ647S',  # Working-age population (UK, 15-64)
-    'employment_rate': 'LREM64TTGBQ156S'   # Employment rate (OECD definition)
+    'Y': 'UKNGDP',          # Real GDP (UK)
+    'K': 'RKNANPGBA666NRUG',          # Capital Stock (constant national prices)
+    'working_age_pop': 'LFWA25TTGBA647S',  # Working-age population (15–64)
+    'employment_rate': 'LFWA25TTGBA647S'   # Employment rate (OECD, percent)
 }
 
-# --- STEP 3: データ取得と整形 ---
+# データ取得と整形
 data = {}
 for var, code in series_codes.items():
     series = fred.get_series(code)
@@ -24,41 +24,47 @@ for var, code in series_codes.items():
 
 df = pd.DataFrame(data).dropna()
 
-# --- STEP 4: 就業者数 L = 労働人口 × 雇用率 ---
+# employment_rate (% なら除算)
+if df['employment_rate'].max() > 1.0:
+    df['employment_rate'] = df['employment_rate'] / 100.0
+
+# 就業者数 L = 労働人口 × 雇用率
 df['L'] = df['working_age_pop'] * df['employment_rate']
 
-# --- STEP 5: 資本ストックを就業者1人あたりに変換 ---
-df['k_per_worker'] = df['K'] / df['L']
+# 労働者あたりGDPと資本
+df['y'] = df['Y'] / df['L']
+df['k'] = df['K'] / df['L']
 
-# --- STEP 6: ログ変換 ---
-df['log_y_pc'] = np.log(df['y_pc'])
-df['log_k_per_worker'] = np.log(df['k_per_worker'])
+# ログ変換
+df['log_y'] = np.log(df['y'])
+df['log_k'] = np.log(df['k'])
 
-# --- STEP 7: TFP計算（ソロー残差） ---
+# ソロー残差（TFP）
 alpha = 0.42
-df['log_A'] = df['log_y_pc'] - alpha * df['log_k_per_worker']
+df['log_A'] = df['log_y'] - alpha * df['log_k']
 
-# --- STEP 8: 成長率（対数差分） ---
-df['g_y'] = df['log_y_pc'].diff()
-df['g_k'] = df['log_k_per_worker'].diff()
+# 成長率（対数差分）
+df['g_y'] = df['log_y'].diff()
+df['g_k'] = df['log_k'].diff()
 df['g_A'] = df['log_A'].diff()
 
 df['tfp_contrib'] = df['g_A']
 df['capital_contrib'] = alpha * df['g_k']
 
-# --- STEP 9: 結果整形 ---
+# 結果の整形
 result = df[['g_y', 'g_A', 'g_k', 'tfp_contrib', 'capital_contrib']].dropna()
-result.columns = ['GDP per capita Growth', 'TFP Growth', 'Capital Growth (per worker)', 'TFP Contribution', 'Capital Contribution']
+result.columns = ['GDP per worker Growth', 'TFP Growth', 'Capital Growth per worker', 'TFP Contribution', 'Capital Contribution']
 
-# --- STEP 10: 可視化 ---
+# 可視化
 plt.figure(figsize=(12, 6))
-plt.plot(result.index, result['GDP per capita Growth'], label='GDP per capita Growth')
+plt.plot(result.index, result['GDP per worker Growth'], label='GDP per worker Growth')
 plt.plot(result.index, result['TFP Growth'], label='TFP Growth')
-plt.plot(result.index, result['Capital Growth (per worker)'], label='Capital Deepening (per worker)')
-plt.title('UK Solow Growth Accounting (Employment-Adjusted Labor)')
+plt.plot(result.index, result['Capital Growth per worker'], label='Capital Deepening')
+plt.title('UK Growth Accounting (per worker GDP and capital)')
 plt.xlabel('Year')
 plt.ylabel('Growth Rate (log difference)')
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
 plt.show()
+ 
