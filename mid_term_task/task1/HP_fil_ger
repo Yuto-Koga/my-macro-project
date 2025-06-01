@@ -1,0 +1,61 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from pandas_datareader.data import DataReader
+from statsmodels.tsa.filters.hp_filter import hpfilter
+
+# 1. FREDからデータを取得
+#    - シリーズID: CLVMNACSCAB1GQDE（Real Gross Domestic Product for Germany, Millions of Chained 2010 Euros, Quarterly, Seasonally Adjusted）
+start = '1991-01-01'
+end = '2025-06-01'
+fred_series = 'CLVMNACSCAB1GQDE'
+
+gdp = DataReader(fred_series, 'fred', start, end)
+
+# 2. 対数変換
+gdp['log_gdp'] = np.log(gdp[fred_series])
+
+# 3. HPフィルター用のλリスト
+lambdas = [10, 100, 1000, 1600]
+
+# 4. 各λでHPフィルターを適用し、trend・cycleをデータフレームに追加
+#    同時に、循環成分の標準偏差を計算して保存
+std_cycle = {}  # 各λについて循環成分の標準偏差を格納する辞書
+
+for lam in lambdas:
+    cycle, trend = hpfilter(gdp['log_gdp'], lamb=lam)
+    # トレンド成分を 'trend_{lam}'、循環成分を 'cycle_{lam}' に格納
+    gdp[f'trend_{lam}'] = trend
+    gdp[f'cycle_{lam}'] = cycle
+
+    # 循環成分の標準偏差を計算して辞書に保存
+    std_cycle[lam] = gdp[f'cycle_{lam}'].std()
+
+# 5. 循環成分の標準偏差を表示
+print("HPフィルターによる循環成分の標準偏差:")
+for lam, sd in std_cycle.items():
+    print(f"  λ={lam}: {sd:.6f}")
+
+
+# 6. プロット
+#    λごとに、トレンド・循環成分を2行1列で描画
+for lam in lambdas:
+    plt.figure(figsize=(10, 6))
+
+    # トレンド成分
+    plt.subplot(2, 1, 1)
+    plt.plot(gdp.index, gdp[f'trend_{lam}'], label=f'Trend (λ={lam})')
+    plt.title(f'HP Filter Trend Component for Germany (λ={lam})')
+    plt.ylabel('log(GDP)')
+    plt.legend()
+
+    # 循環成分
+    plt.subplot(2, 1, 2)
+    plt.plot(gdp.index, gdp[f'cycle_{lam}'], label=f'Cycle (λ={lam})', color='gray')
+    plt.title(f'HP Filter Cycle Component for Germany (λ={lam})')
+    plt.xlabel('Date')
+    plt.ylabel('Deviation')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()

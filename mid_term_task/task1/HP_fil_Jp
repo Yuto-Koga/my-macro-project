@@ -1,0 +1,56 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from pandas_datareader.data import DataReader
+from statsmodels.tsa.filters.hp_filter import hpfilter
+
+# 1. FREDから日本の実質GDPデータを取得
+#    - シリーズID: JPNRGDPEXP（Real GDP for Japan, Quarterly, SA） 
+start = '1991-01-01'
+end = '2025-06-01'
+fred_series_jp = 'JPNRGDPEXP'
+
+gdp_jp = DataReader(fred_series_jp, 'fred', start, end)
+
+# 2. 対数変換
+gdp_jp['log_gdp'] = np.log(gdp_jp[fred_series_jp])
+
+# 3. HPフィルター用のλリスト
+lambdas = [10, 100, 1000, 1600]
+
+# 4. 各λでHPフィルターを適用し、trend・cycleをデータフレームに追加
+#    同時に、循環成分の標準偏差を計算して保存
+std_cycle_jp = {}
+
+for lam in lambdas:
+    cycle, trend = hpfilter(gdp_jp['log_gdp'], lamb=lam)
+    gdp_jp[f'trend_{lam}'] = trend
+    gdp_jp[f'cycle_{lam}'] = cycle
+    std_cycle_jp[lam] = gdp_jp[f'cycle_{lam}'].std()
+
+# 5. 循環成分の標準偏差を表示
+print("日本のHPフィルター循環成分の標準偏差:")
+for lam, sd in std_cycle_jp.items():
+    print(f"  λ={lam}: {sd:.6f}")
+
+# 6. プロット
+for lam in lambdas:
+    plt.figure(figsize=(10, 6))
+
+    # トレンド成分
+    plt.subplot(2, 1, 1)
+    plt.plot(gdp_jp.index, gdp_jp[f'trend_{lam}'], label=f'Trend (λ={lam})')
+    plt.title(f'HP Filter Trend Component for Japan (λ={lam})')
+    plt.ylabel('log(GDP)')
+    plt.legend()
+
+    # 循環成分
+    plt.subplot(2, 1, 2)
+    plt.plot(gdp_jp.index, gdp_jp[f'cycle_{lam}'], label=f'Cycle (λ={lam})', color='gray')
+    plt.title(f'HP Filter Cycle Component for Japan (λ={lam})')
+    plt.xlabel('Date')
+    plt.ylabel('Deviation')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()

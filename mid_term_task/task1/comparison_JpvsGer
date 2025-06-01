@@ -1,0 +1,37 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from pandas_datareader.data import DataReader
+from statsmodels.tsa.filters.hp_filter import hpfilter
+
+# 共通設定
+start = '1991-01-01'
+end = '2025-06-01'
+lamb = 1600  # 四半期データ用のHPフィルターλ
+
+# 1. ドイツの実質GDPをFREDから取得（シリーズID: CLVMNACSCAB1GQDE）
+germany_series = 'CLVMNACSCAB1GQDE'
+gdp_de = DataReader(germany_series, 'fred', start, end)
+gdp_de['log_gdp'] = np.log(gdp_de[germany_series])
+cycle_de, trend_de = hpfilter(gdp_de['log_gdp'], lamb=lamb)
+gdp_de['cycle'] = cycle_de
+
+# 2. 日本の実質GDPをFREDから取得（シリーズID: JPNRGDPEXP）
+japan_series = 'JPNRGDPEXP'
+gdp_jp = DataReader(japan_series, 'fred', start, end)
+gdp_jp['log_gdp'] = np.log(gdp_jp[japan_series])
+cycle_jp, trend_jp = hpfilter(gdp_jp['log_gdp'], lamb=lamb)
+gdp_jp['cycle'] = cycle_jp
+
+# 3. 両国の循環変動成分を同一グラフにプロット
+plt.figure(figsize=(12, 6))
+plt.plot(gdp_de.index, gdp_de['cycle'], label='Germany Cycle (λ=1600)')
+plt.plot(gdp_jp.index, gdp_jp['cycle'], label='Japan Cycle (λ=1600)')
+plt.axhline(0, color='black', linewidth=0.5, linestyle='--')
+
+plt.title('HP Filter Cycle Component (λ=1600) for Germany & Japan')
+plt.xlabel('Date')
+plt.ylabel('Log GDP Deviation')
+plt.legend()
+plt.tight_layout()
+plt.show()
