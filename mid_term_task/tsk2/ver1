@@ -1,0 +1,172 @@
+"""
+OECD Growth-Accounting (1990-2019)
+===================================
+Refactored implementation based on Cobb-Douglas production function
+  Y = A * K^α * H^(1-α)
+where H is total hours worked.
+The script
+1. downloads Penn World Table 9.0 directly from the GGDC site,
+2. filters 22 OECD economies for 1990-2019,
+3. constructs log-level series (y/h, k/h, h/n, A),
+4. computes annual Törnqvist contributions of TFP, capital deepening, labour-utilisation,
+5. reports period averages and shares.
+
+Run           : python oecd_growth_accounting.py
+Python ≥ 3.8   : required
+Dependencies   : pandas, numpy, requests (auto-installed with pandas)
+"""
+
+from __future__ import annotations
+
+import pandas as pd
+import numpy as np
+from pathlib import Path
+
+# ──────────────────────────────────────────────────────────────────────────
+# Parameters
+# ──────────────────────────────────────────────────────────────────────────
+START_YEAR: int = 1990
+END_YEAR: int = 2019
+OECD_COUNTRIES = [
+    "United Kingdom", "United States", "Australia", "Austria", "Belgium",
+    "Canada", "Denmark", "Finland", "France", "Germany", "Greece",
+    "Iceland", "Ireland", "Italy", "Japan", "Netherlands", "New Zealand",
+    "Norway", "Portugal", "Spain", "Sweden", "Switzerland",
+]
+PWT_URL = "https://www.rug.nl/ggdc/docs/pwt90.dta"
+
+# ──────────────────────────────────────────────────────────────────────────
+# Helper functions
+# ──────────────────────────────────────────────────────────────────────────
+
+def _load_pwt(url: str = PWT_URL) -> pd.DataFrame:
+    """Read PWT 9.0 Stata file into a DataFrame, keeping only needed columns."""
+    cols = [
+        "countrycode",
+        "country",
+        "year",
+        "rgdpna",  # Real GDP (2017 USD, at constant national prices)
+        "rkna",    # Real capital stock (2017 USD)
+        "pop",      # Population
+        "emp",      # Persons engaged (head-count)
+        "avh",      # Average hours worked per worker
+        "labsh",    # Labour share of income
+        "rtfpna",   # TFP level (2017 = 1)
+    ]
+    df = pd.read_stata(url, columns=cols)
+    return df
+
+
+def _prep_panel(df: pd.DataFrame) -> pd.DataFrame:
+    """Filter to OECD sample and construct growth-accounting levels."""
+    # Country & period filter
+    mask = df["country"].isin(OECD_COUNTRIES) & df["year"].between(START_YEAR, END_YEAR)
+    df = df.loc[mask].dropna().copy()
+
+    # Core variables ------------------------------------------------------
+    df["alpha"] = (1.0 - df["labsh"]).clip(lower=0, upper=1)  # capital share
+    df["hours"] = df["emp"] * df["avh"]                       # total hours H
+    df["k_per_h"] = df["rkna"] / df["hours"]                 # K/H
+    df["h_per_n"] = df["hours"] / df["pop"]                  # H/N (labour utilisation)
+    df.sort_values(["countrycode", "year"], inplace=True)
+    return df
+
+
+def _annual_contributions(g: pd.Series, w: pd.Series) -> pd.Series:
+    """Weighted contribution for a growth rate series g_t with weights w_t.
+
+    Parameters
+    ----------
+    g : Δln(series)
+    w : period-t Törnqvist weight (avg of t and t-1 factor shares)
+    """
+    return w * g
+
+
+def _country_growth(df_cty: pd.DataFrame) -> pd.DataFrame:
+    """Compute annual Δln and contributions for a single country panel."""
+    # One-period log differences
+    g_A = np.log(df_cty["rtfpna"]).diff()
+    g_kh = np.log(df_cty["k_per_h"]).diff()
+    g_hn = np.log(df_cty["h_per_n"]).diff()
+
+    # Törnqvist average α between t-1 and t
+    alpha_bar = 0.5 * (df_cty["alpha"].shift() + df_cty["alpha"])
+
+    contrib_k = _annual_contributions(g_kh, alpha_bar)
+    contrib_h = _annual_contributions(g_hn, 1 - alpha_bar)  # labour share weight
+
+    g_yh = g_A + contrib_k + contrib_h  # growth of Y/H
+
+    df_out = pd.DataFrame({
+        "countrycode": df_cty["countrycode"],
+        "year": df_cty["year"],
+        "g_yh": g_yh,
+        "g_A": g_A,
+        "contrib_k": contrib_k,
+        "contrib_h": contrib_h,
+    })
+    return df_out.dropna().reset_index(drop=True)
+
+
+def _period_average(panel: pd.DataFrame, start: int = START_YEAR, end: int = END_YEAR) -> pd.Series:
+    """Return period-average annual growth (in pct) and shares for each country."""
+    panel = panel[(panel["year"] >= start) & (panel["year"] <= end)]
+    # Mean growth rates (logs ≈ % when small). Multiply by 100 for percentage.
+    g_y = panel["g_yh"].mean() * 100
+    g_A = panel["g_A"].mean() * 100
+    cap_deep = panel["contrib_k"].mean() * 100
+
+    tfp_share = g_A / g_y if g_y else np.nan
+    cap_share = cap_deep / g_y if g_y else np.nan
+
+    return pd.Series({
+        "countrycode": panel["countrycode"].iloc[0],
+        "Growth Rate (Y/H %)": round(g_y, 2),
+        "TFP Growth %": round(g_A, 2),
+        "Capital Deepening %": round(cap_deep, 2),
+        "TFP Share": round(tfp_share, 2),
+        "Capital Share": round(cap_share, 2),
+    })
+
+# ──────────────────────────────────────────────────────────────────────────
+# Main routine
+# ──────────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    print("Downloading Penn World Table 9.0 …")
+    raw = _load_pwt()
+    panel = _prep_panel(raw)
+
+    # Country-level annual contributions ----------------------------------
+    contrib_panel = panel.groupby("countrycode", sort=False).apply(_country_growth).reset_index(drop=True)
+
+    # Period averages -----------------------------------------------------
+    summary = contrib_panel.groupby("countrycode", sort=False).apply(_period_average).reset_index(drop=True)
+
+    # Map countrycode → country for labeling --------------------------------
+    code_to_name = panel[["countrycode", "country"]].drop_duplicates().set_index("countrycode")["country"]
+    summary["country"] = summary["countrycode"].map(code_to_name)
+
+    # Average row ---------------------------------------------------------
+    avg_row = summary.drop(columns=["countrycode", "country"]).mean(numeric_only=True)
+    avg_row["TFP Share"] = avg_row["TFP Growth %"] / avg_row["Growth Rate (Y/H %)"]
+    avg_row["Capital Share"] = avg_row["Capital Deepening %"] / avg_row["Growth Rate (Y/H %)"]
+    avg_row = pd.concat([
+        pd.Series({"countrycode": "AVG", "country": "Average"}),
+        avg_row.round(2),
+    ])
+    summary = pd.concat([summary, avg_row.to_frame().T], ignore_index=True)
+
+    # Pretty print --------------------------------------------------------
+    print(f"\nOECD Growth Accounting ({START_YEAR}-{END_YEAR})")
+    print("=" * 90)
+    show_cols = [
+        "country", "Growth Rate (Y/H %)", "TFP Growth %", "Capital Deepening %",
+        "TFP Share", "Capital Share",
+    ]
+    print(summary[show_cols].to_string(index=False))
+
+
+if __name__ == "__main__":
+    main()
