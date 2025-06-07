@@ -1,4 +1,4 @@
-ver 1 is the code to calsulate solow residual by the way i learn in the class
+ver 1 is the code to calculate solow residual by the way i learn in the class
 ver 2 is the code to calculate it by refering to Jorgenson & Griliches approach.
-ver2 approach is different from ver 1 in regaring L as Hl(effective labor) and define HL as total hours * hg
+ver2 approach is different from ver 1 in regaring L as Hl(effective labor) and define HL as total hours * hc
 that lead to lower TFP content
