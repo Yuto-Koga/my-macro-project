@@ -4,8 +4,6 @@ import pandas as pd
 import numpy as np
 
 # ──────────────────────────────────────────────────────────────────────────
-# Parameters
-# ──────────────────────────────────────────────────────────────────────────
 START_YEAR     = 1990
 END_YEAR       = 2019
 OECD_COUNTRIES = [
@@ -16,65 +14,65 @@ OECD_COUNTRIES = [
 ]
 PWT_URL = "https://www.rug.nl/ggdc/docs/pwt90.dta"
 
-# ──────────────────────────────────────────────────────────────────────────
 def load_pwt(url: str = PWT_URL) -> pd.DataFrame:
     cols = [
         "countrycode", "country", "year",
-        "rgdpo",   # Output-side real GDP for cross-country comparability
-        "rkna",    # Capital stock
-        "emp",     # Persons engaged
-        "avh",     # Average hours worked
-        "pop",     # Population
-        "labsh",   # Labour share of income
+        "rgdpo",    # Output-side real GDP
+        "rkna",     # Capital stock
+        "emp",      # Persons engaged
+        "avh",      # Avg hours worked
+        "labsh",    # Labour share of income
+        "hc",       # Human capital index
     ]
     return pd.read_stata(url, columns=cols)
 
 def prep_panel(df: pd.DataFrame) -> pd.DataFrame:
-    # フィルタ
     df = df[df["country"].isin(OECD_COUNTRIES) &
             df["year"].between(START_YEAR, END_YEAR)].copy()
 
     # 総労働時間 H
     df["hours"] = df["emp"] * df["avh"]
-    # 欠損・ゼロ除去
     df = df[df["hours"] > 0]
+
+    # 効率労働 EffL = H × hc
+    df["EffL"] = df["hours"] * df["hc"]
+    df = df[df["EffL"] > 0]
 
     # 資本シェア α_t
     df["alpha"] = (1 - df["labsh"]).clip(0, 1)
 
     # 対数レベル
-    df["lnY_h"]   = np.log(df["rgdpo"] / df["hours"])
-    df["lnK_h"]   = np.log(df["rkna"]  / df["hours"])
+    df["lnY_e"] = np.log(df["rgdpo"] / df["EffL"])
+    df["lnK_e"] = np.log(df["rkna"]  / df["EffL"])
 
-    # ソロー残差型TFP（Hあたり）
-    #   lnA = ln(Y/H) - α ln(K/H)
-    df["lnA_res"] = df["lnY_h"] - df["alpha"] * df["lnK_h"]
+    # ソロー残差型TFP（EffLあたり）
+    #   lnA = ln(Y/EffL) - α ln(K/EffL)
+    df["lnA_res"] = df["lnY_e"] - df["alpha"] * df["lnK_e"]
 
-    # 並び替え
     df.sort_values(["countrycode", "year"], inplace=True)
     return df
 
 def compute_country(df_cty: pd.DataFrame) -> pd.DataFrame:
     g = df_cty.groupby("countrycode")
     # Δln
-    g_yh = g["lnY_h"].diff()
-    g_kh = g["lnK_h"].diff()
-    g_Ar = g["lnA_res"].diff()
+    g_ye  = g["lnY_e"].diff()
+    g_ke  = g["lnK_e"].diff()
+    g_Ar  = g["lnA_res"].diff()
 
     # Törnqvist weight
     alpha_bar = 0.5 * (df_cty["alpha"].shift() + df_cty["alpha"])
-    cap_deep  = alpha_bar * g_kh
+    cap_deep  = alpha_bar * g_ke
 
     return pd.DataFrame({
         "countrycode": df_cty["countrycode"],
         "year":        df_cty["year"],
-        "g_yh":        g_yh,
+        "g_Y/E":       g_ye,
         "g_A":         g_Ar,
         "contrib_k":   cap_deep
     }).dropna().reset_index(drop=True)
 
 def period_average(panel: pd.DataFrame) -> pd.Series:
-    g_y   = panel["g_yh"].mean()  * 100
+    g_y   = panel["g_Y/E"].mean() * 100
     g_A   = panel["g_A"].mean()   * 100
     cap   = panel["contrib_k"].mean() * 100
 
@@ -82,17 +80,17 @@ def period_average(panel: pd.DataFrame) -> pd.Series:
     cap_share = cap / g_y if g_y else np.nan
 
     return pd.Series({
-        "countrycode":         panel["countrycode"].iloc[0],
-        "Growth Rate (Y/H %)": round(g_y, 2),
-        "TFP Growth %":        round(g_A, 2),
-        "Capital Deepening %": round(cap, 2),
-        "TFP Share":           round(tfp_share, 2),
-        "Capital Share":       round(cap_share, 2),
+        "countrycode":            panel["countrycode"].iloc[0],
+        "Growth Rate (Y/EffL %)": round(g_y, 2),
+        "TFP Growth %":           round(g_A, 2),
+        "Capital Deepening %":    round(cap, 2),
+        "TFP Share":              round(tfp_share, 2),
+        "Capital Share":          round(cap_share, 2),
     })
 
 def main() -> None:
-    df_raw = load_pwt()
-    panel  = prep_panel(df_raw)
+    df_raw  = load_pwt()
+    panel   = prep_panel(df_raw)
     contrib = panel.groupby("countrycode", sort=False).apply(compute_country).reset_index(drop=True)
     summary = contrib.groupby("countrycode", sort=False).apply(period_average).reset_index(drop=True)
 
@@ -106,7 +104,7 @@ def main() -> None:
     summary = pd.concat([summary, avg.to_frame().T], ignore_index=True)
 
     # 出力
-    cols = ["country","Growth Rate (Y/H %)","TFP Growth %",
+    cols = ["country","Growth Rate (Y/EffL %)","TFP Growth %",
             "Capital Deepening %","TFP Share","Capital Share"]
     print(summary[cols].to_string(index=False))
 
