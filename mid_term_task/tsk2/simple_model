@@ -1,0 +1,74 @@
+import pandas as pd
+import numpy as np
+
+# 1) PWT 10.0 の読み込み
+pwt = pd.read_stata("https://www.rug.nl/ggdc/docs/pwt100.dta")
+
+# 2) 対象 OECD 諸国 ISO3 リスト
+oecd_iso3 = [
+    'AUS','AUT','BEL','CAN','CHL','CZE','DEU','DNK','EST','ESP',
+    'FIN','FRA','GBR','GRC','HUN','IRL','ISL','ISR','ITA','JPN',
+    'KOR','LVA','LTU','LUX','MEX','NLD','NOR','NZL','POL','PRT',
+    'SVK','SVN','SWE','TUR','USA'
+]
+
+# 3) 必要変数を抽出・フィルタリング
+vars_pwt = ['countrycode','year','rgdpo','cn','emp','avh','labsh']
+df = (
+    pwt[vars_pwt]
+      .rename(columns={'countrycode':'iso3'})
+      .query("1990 <= year <= 2019 and iso3 in @oecd_iso3")
+      .copy()
+)
+
+# 4) パー労働ユニット変換
+#    y = Y/L, k = K/L, ここで L = emp × avh（総労働時間）
+df['L']    = df['emp'] * df['avh']
+df['y']    = df['rgdpo'] / df['L']
+df['k']    = df['cn']    / df['L']
+
+# 5) 対数化
+df['lny']    = np.log(df['y'])
+df['lnk']    = np.log(df['k'])
+
+# 6) 年次成長率（対数差分）
+df = df.sort_values(['iso3','year'])
+df['dlny']   = df.groupby('iso3')['lny'].diff()
+df['dlnk']   = df.groupby('iso3')['lnk'].diff()
+
+# 7) 固定資本分配率 α
+alpha = 0.30
+
+# 8) 寄与度計算
+df['cap_deep'] = alpha * df['dlnk']        # 資本深耕寄与
+df['tfp_g']    = df['dlny'] - df['cap_deep']  # TFP 成長
+
+# 9) 国別に年平均を取ってパーセント表示
+res = (
+    df.groupby('iso3')
+      .agg(
+          Growth_Rate       = ('dlny',   'mean'),
+          Capital_Deepening = ('cap_deep','mean'),
+          TFP_Growth        = ('tfp_g',  'mean')
+      )
+      .assign(
+          Growth_Rate       = lambda x: x['Growth_Rate'] * 100,
+          Capital_Deepening = lambda x: x['Capital_Deepening'] * 100,
+          TFP_Growth        = lambda x: x['TFP_Growth'] * 100,
+          TFP_Share         = lambda x: x['TFP_Growth'] / x['Growth_Rate'],
+          Capital_Share     = lambda x: x['Capital_Deepening'] / x['Growth_Rate']
+      )
+      .reset_index()
+      .rename(columns={'iso3':'Country'})
+      .round(2)
+)
+
+# 10) 全体平均行の追加
+avg = res[['Growth_Rate','TFP_Growth','Capital_Deepening','TFP_Share','Capital_Share']].mean()
+avg['Country'] = 'Average'
+res = pd.concat([res, avg.to_frame().T], ignore_index=True)
+
+# 11) 結果表示
+print("\nGrowth Accounting in OECD Countries: 1990–2019 (per worker, α=0.30)")
+print("="*80)
+print(res.to_string(index=False))

@@ -1,4 +1,13 @@
+I think deeply about the definition of L and K.
+L can be interpreted in many ways.
+Just think population, or regard L as dependence on population and working hours
+K has many implications.
+first, regard K as the flow of capital 
+second , interpret K as the accumulation of capital
+I use the variable in the PWT human capital in the ver 2 
+second k` s definition depends on 
 ver 1 is the code to calculate solow residual by the way i learn in the class
 ver 2 is the code to calculate it by refering to Jorgenson & Griliches approach.
 ver2 approach is different from ver 1 in regaring L as Hl(effective labor) and define HL as total hours * hc
 that lead to lower TFP content
+ver4 use PMI way to estimate K_t = (1 - δ)K_t-1 + I_t
