@@ -44,7 +44,7 @@ def prep_panel(df: pd.DataFrame) -> pd.DataFrame:
     # 減価償却フロー Dep_t = delta * rkna
     df["Dep"] = df["delta"] * df["rkna"]
     # 疑似資本サービス量 K_service = I + Dep
-    df["K_service"] = df["I"] + df["Dep"]
+    df["K_service"] =  df["Dep"]
 
     # 総労働時間 H
     df["hours"] = df["emp"] * df["avh"]
