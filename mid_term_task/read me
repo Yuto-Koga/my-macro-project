@@ -10,7 +10,7 @@ ver 2 is the code to calculate it by refering to Jorgenson & Griliches approach.
 I use the variable in the PWT human capital in the ver 2 (EffL = hours × hc)
 ver2 approach is different from ver 1 in regaring L as Hl(effective labor) and define HL as total hours * hc
 that lead to lower TFP content
-
+ver 3 is capital service model.
 ver4 use PMI way to estimate K_t = (1 - δ)K_t-1 + I_t
 this regard K as stock not as flow.This is natural because in the trajectory Of K_t is depending on investment and 
  not deprecation K_t-1 and this definition is often seen in Ramsey model.  

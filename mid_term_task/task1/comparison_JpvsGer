@@ -35,3 +35,18 @@ plt.ylabel('Log GDP Deviation')
 plt.legend()
 plt.tight_layout()
 plt.show()
+
+# 4. 両国の循環成分の相関係数を計算
+#    インデックスを合わせて、2列のDataFrameを作成
+cycles = pd.concat([
+    gdp_de['cycle'].rename('Germany'),
+    gdp_jp['cycle'].rename('Japan')
+], axis=1).dropna()
+
+# 相関係数を出力
+corr_value = cycles['Germany'].corr(cycles['Japan'])
+print(f"Germany–Japan cycle correlation: {corr_value:.4f}")
+
+# （オプション）相関行列を表示する場合
+print("\nCorrelation matrix:")
+print(cycles.corr())
