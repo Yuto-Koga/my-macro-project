@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-OECD Growth Accounting with Solow‐モデル資本蓄積
-Loads PWT 9.0 directly from URL via pandas.read_stata,
-rebuilt K via Solow accumulation with constant savings rate s,
+OECD Growth Accounting with Fixed Capital Share (α = 0.3)
+Loads PWT 9.0 directly from URL via pandas.read_stata, rebuilds K by PIM,
 computes Solow‐residual TFP, capital deepening, and shares for OECD countries (1990–2019).
 """
 
@@ -25,7 +24,7 @@ OECD_COUNTRIES = [
 REQUIRED_COLS = [
     "countrycode", "country", "year",
     "rgdpo",   # real GDP (output-side, constant 2017 USD)
-    "csh_i",   # investment share of GDP → here used as savings rate proxy
+    "csh_i",   # investment share of GDP
     "delta",   # depreciation rate
     "emp",     # employment
     "avh",     # average hours worked
@@ -39,52 +38,55 @@ def load_pwt() -> pd.DataFrame:
     """Load PWT 9.0 from the GGDC URL, selecting only needed columns."""
     return pd.read_stata(PWT_URL, columns=REQUIRED_COLS)
 
-def prep_panel_solow(df: pd.DataFrame) -> pd.DataFrame:
+
+def prep_panel(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Filter OECD and years; compute hours and efficiency labor;
-    rebuild capital stock via Solow accumulation with constant s;
+    Filter OECD and years; compute investment flow, clip δ;
+    rebuild capital stock via PIM; define efficiency labor;
     set fixed α; add log‐levels for growth accounting.
     """
-    # フィルタ
+    # filter by year and country
     df = df[df["year"].between(START_YEAR, END_YEAR)]
     df = df[df["country"].isin(OECD_COUNTRIES)].copy()
 
-    # クリップしておく
+    # investment flow I_t and clip depreciation
+    df["I"]     = df["csh_i"] * df["rgdpo"]
     df["delta"] = df["delta"].clip(lower=0.01, upper=0.15)
 
-    # グループごとにソロー累積式で資本ストック再構築
-    df["K_solow"] = np.nan
+    # rebuild capital stock K_pim via Perpetual Inventory Method
+    df["K_pim"] = np.nan
     for code, grp in df.groupby("countrycode"):
         grp = grp.sort_values("year")
-        δ_vals = grp["delta"].values
-        Y_vals = grp["rgdpo"].values
-        # 定数貯蓄率 s を各国平均の投資率とする
-        s_val  = grp["csh_i"].mean()
+        I_vals     = grp["I"].values
+        δ_vals     = grp["delta"].values
 
-        # 定常状態近似による初期値
-        K_list = [s_val * Y_vals[0] / δ_vals[0]]
-        # ソロー累積式 K_{t+1} = (1-δ_t)K_t + s * Y_t
-        for t in range(len(grp) - 1):
-            K_next = (1 - δ_vals[t]) * K_list[-1] + s_val * Y_vals[t]
-            K_list.append(K_next)
+        # approximate average investment growth rate g
+        g_vals   = np.log(I_vals[1:] / I_vals[:-1])
+        g_approx = max(np.nanmean(g_vals), 0.01)
 
-        df.loc[grp.index, "K_solow"] = K_list
+        # initial capital K0 = I0 / (g + δ0)
+        K_list = [I_vals[0] / (g_approx + δ_vals[0])]
+        for t in range(1, len(grp)):
+            K_list.append((1 - δ_vals[t]) * K_list[-1] + I_vals[t])
 
-    # 労働投入と効率労働
+        df.loc[grp.index, "K_pim"] = K_list
+
+    # total hours and efficient labor
     df["hours"] = df["emp"] * df["avh"]
     df = df[df["hours"] > 0]
     df["EffL"]  = df["hours"] * df["hc"]
     df = df[df["EffL"] > 0]
 
-    # 資本シェア α
-    df["alpha"] = FIXED_ALPHA
+    # 固定した資本シェア α
+    df["alpha"] = 0.30
 
-    # ログレベル
+    # log‐levels per efficiency labor
     df["lnY_e"]   = np.log(df["rgdpo"]  / df["EffL"])
-    df["lnK_e"]   = np.log(df["K_solow"] / df["EffL"])
+    df["lnK_e"]   = np.log(df["K_pim"] / df["EffL"])
     df["lnA_res"] = df["lnY_e"] - df["alpha"] * df["lnK_e"]
 
     return df.sort_values(["countrycode", "year"])
+
 
 def compute_summary(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -97,6 +99,7 @@ def compute_summary(df: pd.DataFrame) -> pd.DataFrame:
         dY = grp["lnY_e"].diff()
         dK = grp["lnK_e"].diff()
         dA = grp["lnA_res"].diff()
+        # 固定資本シェアの平均
         alpha_bar = FIXED_ALPHA
         cK = alpha_bar * dK
 
@@ -105,23 +108,29 @@ def compute_summary(df: pd.DataFrame) -> pd.DataFrame:
         CK = cK.mean() * 100
 
         records.append({
-            "Country":             grp["country"].iat[0],
+            "Country":                grp["country"].iat[0],
             "Growth Rate (Y/EffL %)": round(Gy, 2),
-            "TFP Growth %":        round(GA, 2),
-            "Capital Deepening %": round(CK, 2),
-            "TFP Share":           round(GA / Gy, 2) if Gy else np.nan,
-            "Capital Share":       round(CK / Gy, 2) if Gy else np.nan,
+            "TFP Growth %":           round(GA, 2),
+            "Capital Deepening %":    round(CK, 2),
+            "TFP Share":              round(GA / Gy, 2) if Gy else np.nan,
+            "Capital Share":          round(CK / Gy, 2) if Gy else np.nan,
         })
 
     summary = pd.DataFrame.from_records(records)
+    # append OECD average
     avg = summary.drop(columns="Country").mean(numeric_only=True)
     avg["Country"] = "OECD Average"
     return pd.concat([summary, avg.to_frame().T], ignore_index=True)
 
+
 def main():
+    # 1. Load data
     df_raw  = load_pwt()
-    panel   = prep_panel_solow(df_raw)
+    # 2. Prepare panel
+    panel   = prep_panel(df_raw)
+    # 3. Compute summary table
     summary = compute_summary(panel)
+    # 4. Print results
     print(summary.to_string(index=False))
 
 if __name__ == "__main__":

@@ -1,9 +1,10 @@
 I think deeply about the definition of L and K.
 L can be interpreted in many ways.
-Just  regard L as dependence on population and working hours or EFFL
+Just  regard L as dependence on population and working hours or regard it as EFFL
 K has many implications.
 first, regard K as the flow of capital 
 second , interpret K as the accumulation of capital
+thirdly, interpret k as the sum of real capital and intangible assets
 I use the variable in the PWT human capital in the ver 2 (EffL = hours × hc)
 ver 1 is the code to calculate solow residual by the way i learn in the class
 ver 2 is the code to calculate it by refering to Jorgenson & Griliches approach.

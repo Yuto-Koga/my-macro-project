@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+import pandas as pd
+import numpy as np
+
+# ──────────────────────────────────────────────────────────────────────────
+# Parameters
+# ──────────────────────────────────────────────────────────────────────────
+START_YEAR     = 1990
+END_YEAR       = 2019
+OECD_COUNTRIES = [
+    "United Kingdom", "United States", "Australia", "Austria", "Belgium",
+    "Canada", "Denmark", "Finland", "France", "Germany", "Greece",
+    "Iceland", "Ireland", "Italy", "Japan", "Netherlands", "New Zealand",
+    "Norway", "Portugal", "Spain", "Sweden", "Switzerland",
+]
+PWT_URL = "https://www.rug.nl/ggdc/docs/pwt90.dta"
+
+# Fixed capital share
+FIXED_ALPHA = 0.3
+
+# ──────────────────────────────────────────────────────────────────────────
+def load_pwt(url: str = PWT_URL) -> pd.DataFrame:
+    cols = [
+        "countrycode", "country", "year",
+        "rgdpo",   # Output-side real GDP for cross-country comparability
+        "rkna",    # Capital stock
+        "emp",     # Persons engaged
+        "avh",     # Average hours worked
+        "pop",     # Population
+        "labsh",   # Labour share of income
+    ]
+    return pd.read_stata(url, columns=cols)
+
+
+def prep_panel(df: pd.DataFrame) -> pd.DataFrame:
+    # Filter OECD countries and years
+    df = df[df["country"].isin(OECD_COUNTRIES) &
+            df["year"].between(START_YEAR, END_YEAR)].copy()
+
+    # Total hours H
+    df["hours"] = df["emp"] * df["avh"]
+    df = df[df["hours"] > 0]
+
+    # Fixed capital share α
+    df["alpha"] = FIXED_ALPHA
+
+    # Log levels per hour
+    df["lnY_h"] = np.log(df["rgdpo"] / df["hours"])
+    df["lnK_h"] = np.log(df["rkna"]  / df["hours"])
+
+    # Solow residual TFP (per hour)
+    df["lnA_res"] = df["lnY_h"] - df["alpha"] * df["lnK_h"]
+
+    df.sort_values(["countrycode", "year"], inplace=True)
+    return df
+
+
+def compute_country(df_cty: pd.DataFrame) -> pd.DataFrame:
+    # First differences of logs
+    dY = df_cty["lnY_h"].diff()
+    dK = df_cty["lnK_h"].diff()
+    dA = df_cty["lnA_res"].diff()
+
+    # Use fixed alpha for Tornqvist weight
+    alpha_bar = FIXED_ALPHA
+    cap_deep  = alpha_bar * dK
+
+    return pd.DataFrame({
+        "countrycode": df_cty["countrycode"],
+        "year":        df_cty["year"],
+        "g_yh":        dY,
+        "g_A":         dA,
+        "contrib_k":   cap_deep
+    }).dropna().reset_index(drop=True)
+
+
+def period_average(panel: pd.DataFrame) -> pd.Series:
+    g_y   = panel["g_yh"].mean()  * 100
+    g_A   = panel["g_A"].mean()   * 100
+    cap   = panel["contrib_k"].mean() * 100
+
+    tfp_share = g_A / g_y if g_y else np.nan
+    cap_share = cap / g_y if g_y else np.nan
+
+    return pd.Series({
+        "countrycode":         panel["countrycode"].iloc[0],
+        "Growth Rate (Y/H %)": round(g_y, 2),
+        "TFP Growth %":        round(g_A, 2),
+        "Capital Deepening %": round(cap, 2),
+        "TFP Share":           round(tfp_share, 2),
+        "Capital Share":       round(cap_share, 2),
+    })
+
+
+def main() -> None:
+    df_raw = load_pwt()
+    panel  = prep_panel(df_raw)
+    contrib = panel.groupby("countrycode", sort=False).apply(compute_country).reset_index(drop=True)
+    summary = contrib.groupby("countrycode", sort=False).apply(period_average).reset_index(drop=True)
+
+    # Map country names
+    name_map = panel[["countrycode","country"]].drop_duplicates().set_index("countrycode")["country"]
+    summary["country"] = summary["countrycode"].map(name_map)
+
+    # Add average row
+    avg = summary.drop(columns=["countrycode","country"]).mean(numeric_only=True)
+    avg["countrycode"], avg["country"] = "AVG", "Average"
+    summary = pd.concat([summary, avg.to_frame().T], ignore_index=True)
+
+    # Display
+    cols = ["country","Growth Rate (Y/H %)","TFP Growth %",
+            "Capital Deepening %","TFP Share","Capital Share"]
+    print(summary[cols].to_string(index=False))
+
+if __name__ == "__main__":
+    main()
