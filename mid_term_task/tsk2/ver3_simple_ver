@@ -55,7 +55,7 @@ def prep_panel(df: pd.DataFrame) -> pd.DataFrame:
     df = df[df["EffL"] > 0]
 
     # 資本分配率 α_t = 1 - labsh
-    df["alpha"] = (1 - df["labsh"]).clip(0, 1)
+    df["alpha"] = 0.3
 
     # 対数レベル（EffLあたり）
     df["lnY_e"]  = np.log(df["rgdpo"]    / df["EffL"])
@@ -73,7 +73,7 @@ def compute_country(df_cty: pd.DataFrame) -> pd.DataFrame:
     g_ye = df_cty["lnY_e"].diff()
     g_ke = df_cty["lnK_e"].diff()
     g_Ar = df_cty["lnA_res"].diff()
-    alpha_bar = 0.5 * (df_cty["alpha"].shift() + df_cty["alpha"])
+    alpha_bar = 0.3
     cap_deep = alpha_bar * g_ke
 
     return pd.DataFrame({

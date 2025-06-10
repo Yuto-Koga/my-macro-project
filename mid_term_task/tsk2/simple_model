@@ -13,7 +13,7 @@ oecd_iso3 = [
 ]
 
 # 3) 必要変数を抽出・フィルタリング
-vars_pwt = ['countrycode','year','rgdpo','cn','emp','avh','labsh']
+vars_pwt = ['countrycode','year','rgdpo','cn','emp','avh','labsh','pop']
 df = (
     pwt[vars_pwt]
       .rename(columns={'countrycode':'iso3'})
@@ -22,8 +22,8 @@ df = (
 )
 
 # 4) パー労働ユニット変換
-#    y = Y/L, k = K/L, ここで L = emp × avh（総労働時間）
-df['L']    = df['emp'] * df['avh']
+#    y = Y/L, k = K/L, ここで L = pop
+df['L']    = df['pop']
 df['y']    = df['rgdpo'] / df['L']
 df['k']    = df['cn']    / df['L']
 
